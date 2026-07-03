@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Invoice Processing Agent</title>
+  <meta name="description" content="AI-powered invoice processing agent — upload invoices to extract data and detect anomalies instantly." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+
+  <!-- ─── Background orbs ──────────────────────────────────────────────── -->
+  <div class="bg-orb bg-orb--1" aria-hidden="true"></div>
+  <div class="bg-orb bg-orb--2" aria-hidden="true"></div>
+  <div class="bg-orb bg-orb--3" aria-hidden="true"></div>
+
+  <div class="app-wrapper">
+
+    <!-- ─── Header ─────────────────────────────────────────────────────── -->
+    <header class="header">
+      <div class="header__logo">
+        <span class="header__logo-icon" aria-hidden="true">⚡</span>
+        <span class="header__logo-text">InvoiceAI</span>
+      </div>
+      <p class="header__tagline">Powered by Gemini · Instant extraction &amp; anomaly detection</p>
+    </header>
+
+    <main>
+
+      <!-- ─── Upload Section ────────────────────────────────────────────── -->
+      <section class="section" aria-labelledby="upload-heading">
+        <h1 id="upload-heading" class="section__title">
+          <span class="section__title-icon">📄</span>
+          Upload Invoice
+        </h1>
+
+        <div class="card upload-card">
+          <form id="upload-form" novalidate>
+
+            <!-- Drop zone -->
+            <div
+              id="drop-zone"
+              class="drop-zone"
+              role="button"
+              tabindex="0"
+              aria-label="Click or drag-and-drop an invoice file here"
+            >
+              <input
+                type="file"
+                id="file-input"
+                name="invoice"
+                accept=".pdf,.png,.jpg,.jpeg,.webp,.tiff"
+                class="drop-zone__input"
+                aria-label="Choose invoice file"
+              />
+              <div class="drop-zone__content" id="drop-zone-content">
+                <div class="drop-zone__icon" aria-hidden="true">📂</div>
+                <p class="drop-zone__primary">Drop your invoice here</p>
+                <p class="drop-zone__secondary">or <span class="link">browse files</span></p>
+                <p class="drop-zone__hint">PDF, PNG, JPEG, WEBP, TIFF · max 10 MB</p>
+              </div>
+              <!-- Preview once a file is selected -->
+              <div class="drop-zone__preview hidden" id="file-preview">
+                <span class="file-preview__icon" id="preview-icon" aria-hidden="true">📄</span>
+                <div class="file-preview__info">
+                  <span class="file-preview__name" id="preview-name"></span>
+                  <span class="file-preview__size" id="preview-size"></span>
+                </div>
+                <button type="button" class="file-preview__remove" id="remove-file" aria-label="Remove file">✕</button>
+              </div>
+            </div>
+
+            <!-- Submit -->
+            <button type="submit" class="btn btn--primary" id="submit-btn" disabled>
+              <span class="btn__text">Process Invoice</span>
+              <span class="btn__icon" aria-hidden="true">→</span>
+            </button>
+
+          </form>
+
+          <!-- Error banner -->
+          <div class="alert alert--error hidden" id="upload-error" role="alert" aria-live="polite">
+            <span class="alert__icon" aria-hidden="true">⚠️</span>
+            <span id="upload-error-msg"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── Loading State ─────────────────────────────────────────────── -->
+      <section class="section hidden" id="loading-section" aria-live="polite" aria-label="Processing invoice">
+        <div class="card loading-card">
+          <div class="spinner" aria-hidden="true">
+            <div class="spinner__ring"></div>
+            <div class="spinner__ring spinner__ring--2"></div>
+          </div>
+          <p class="loading-card__title">Processing your invoice…</p>
+          <div class="loading-steps" id="loading-steps">
+            <div class="loading-step" data-step="extract">
+              <span class="loading-step__dot"></span>
+              <span>Extracting invoice data with Gemini AI</span>
+            </div>
+            <div class="loading-step" data-step="anomaly">
+              <span class="loading-step__dot"></span>
+              <span>Running anomaly detection</span>
+            </div>
+            <div class="loading-step" data-step="save">
+              <span class="loading-step__dot"></span>
+              <span>Saving to database</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <!-- ─── Result Card ───────────────────────────────────────────────── -->
+      <section class="section hidden" id="result-section" aria-labelledby="result-heading">
+        <h2 id="result-heading" class="section__title">
+          <span class="section__title-icon">✅</span>
+          Extraction Result
+        </h2>
+
+        <div class="card result-card" id="result-card">
+
+          <!-- Result header: vendor + risk badge -->
+          <div class="result-header">
+            <div class="result-header__meta">
+              <div class="result-field">
+                <span class="result-field__label">Vendor</span>
+                <span class="result-field__value" id="r-vendor">—</span>
+              </div>
+              <div class="result-field">
+                <span class="result-field__label">Invoice #</span>
+                <span class="result-field__value mono" id="r-invoice-number">—</span>
+              </div>
+              <div class="result-field">
+                <span class="result-field__label">Invoice Date</span>
+                <span class="result-field__value" id="r-invoice-date">—</span>
+              </div>
+              <div class="result-field">
+                <span class="result-field__label">Due Date</span>
+                <span class="result-field__value" id="r-due-date">—</span>
+              </div>
+              <div class="result-field">
+                <span class="result-field__label">Currency</span>
+                <span class="result-field__value mono" id="r-currency">—</span>
+              </div>
+            </div>
+
+            <!-- Risk badge -->
+            <div class="risk-panel" id="risk-panel">
+              <div class="risk-badge" id="risk-badge">
+                <span class="risk-badge__dot" id="risk-dot"></span>
+                <span class="risk-badge__label" id="risk-label">—</span>
+              </div>
+              <div class="risk-flags hidden" id="risk-flags">
+                <p class="risk-flags__title">⚑ Flags detected</p>
+                <ul class="risk-flags__list" id="risk-flags-list"></ul>
+              </div>
+              <div class="risk-reasoning hidden" id="risk-reasoning">
+                <p class="risk-reasoning__title">AI Reasoning</p>
+                <p class="risk-reasoning__text" id="risk-reasoning-text"></p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Divider -->
+          <div class="divider" role="separator"></div>
+
+          <!-- Line items table -->
+          <div class="table-wrapper">
+            <h3 class="table-title">Line Items</h3>
+            <table class="data-table" id="line-items-table" aria-label="Invoice line items">
+              <thead>
+                <tr>
+                  <th scope="col">Description</th>
+                  <th scope="col" class="num">Qty</th>
+                  <th scope="col" class="num">Unit Price</th>
+                  <th scope="col" class="num">Amount</th>
+                </tr>
+              </thead>
+              <tbody id="line-items-body">
+                <tr class="empty-row">
+                  <td colspan="4">No line items extracted.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <!-- Divider -->
+          <div class="divider" role="separator"></div>
+
+          <!-- Totals -->
+          <div class="totals-grid">
+            <div class="totals-grid__spacer"></div>
+            <div class="totals-panel">
+              <div class="totals-row">
+                <span class="totals-row__label">Subtotal</span>
+                <span class="totals-row__value" id="r-subtotal">—</span>
+              </div>
+              <div class="totals-row">
+                <span class="totals-row__label">Tax</span>
+                <span class="totals-row__value" id="r-tax">—</span>
+              </div>
+              <div class="totals-row totals-row--total">
+                <span class="totals-row__label">Total</span>
+                <span class="totals-row__value" id="r-total">—</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Vendor address -->
+          <div class="result-address hidden" id="result-address-block">
+            <span class="result-field__label">Vendor Address</span>
+            <p class="result-address__text" id="r-vendor-address"></p>
+          </div>
+
+        </div>
+
+        <!-- New invoice button -->
+        <div class="section-actions">
+          <button type="button" class="btn btn--ghost" id="new-invoice-btn">
+            <span aria-hidden="true">＋</span> Process another invoice
+          </button>
+        </div>
+      </section>
+
+      <!-- ─── History Section ───────────────────────────────────────────── -->
+      <section class="section" id="history-section" aria-labelledby="history-heading">
+        <div class="section-header-row">
+          <h2 id="history-heading" class="section__title">
+            <span class="section__title-icon">🗂</span>
+            Invoice History
+          </h2>
+          <button type="button" class="btn btn--sm btn--ghost" id="refresh-btn" aria-label="Refresh history">
+            <span class="refresh-icon" aria-hidden="true">↻</span> Refresh
+          </button>
+        </div>
+
+        <!-- Filter bar -->
+        <div class="filter-bar">
+          <input
+            type="search"
+            id="filter-vendor"
+            class="filter-input"
+            placeholder="Filter by vendor…"
+            aria-label="Filter by vendor name"
+          />
+          <select id="filter-risk" class="filter-select" aria-label="Filter by risk level">
+            <option value="">All risk levels</option>
+            <option value="low">Low</option>
+            <option value="medium">Medium</option>
+            <option value="high">High</option>
+          </select>
+          <select id="filter-status" class="filter-select" aria-label="Filter by status">
+            <option value="">All statuses</option>
+            <option value="completed">Completed</option>
+            <option value="processing">Processing</option>
+            <option value="pending">Pending</option>
+            <option value="failed">Failed</option>
+          </select>
+        </div>
+
+        <div class="card table-card">
+          <div class="table-wrapper">
+            <table class="data-table history-table" id="history-table" aria-label="Invoice history">
+              <thead>
+                <tr>
+                  <th scope="col">Vendor</th>
+                  <th scope="col">Invoice #</th>
+                  <th scope="col">Date</th>
+                  <th scope="col" class="num">Total</th>
+                  <th scope="col">Risk</th>
+                  <th scope="col">Status</th>
+                  <th scope="col">Uploaded</th>
+                </tr>
+              </thead>
+              <tbody id="history-body">
+                <!-- Populated by JS -->
+              </tbody>
+            </table>
+          </div>
+
+          <!-- History states -->
+          <div class="table-state hidden" id="history-loading">
+            <div class="mini-spinner" aria-hidden="true"></div>
+            <span>Loading history…</span>
+          </div>
+          <div class="table-state hidden" id="history-empty">
+            <span class="table-state__icon" aria-hidden="true">📭</span>
+            <span>No invoices found.</span>
+          </div>
+          <div class="table-state hidden" id="history-error">
+            <span class="table-state__icon" aria-hidden="true">⚠️</span>
+            <span id="history-error-msg">Failed to load history.</span>
+          </div>
+
+          <!-- Pagination -->
+          <div class="pagination hidden" id="pagination">
+            <button class="btn btn--sm btn--ghost" id="prev-page-btn" aria-label="Previous page">← Prev</button>
+            <span class="pagination__info" id="pagination-info"></span>
+            <button class="btn btn--sm btn--ghost" id="next-page-btn" aria-label="Next page">Next →</button>
+          </div>
+        </div>
+
+      </section>
+
+    </main>
+
+    <!-- ─── Footer ─────────────────────────────────────────────────────── -->
+    <footer class="footer">
+      <p>InvoiceAI &copy; 2024 · Powered by Google Gemini 1.5 Flash</p>
+    </footer>
+
+  </div><!-- /.app-wrapper -->
+
+  <!-- ─── Floating Chat Widget ────────────────────────────────────────── -->
+  <div class="chat-widget" id="chat-widget">
+    
+    <!-- Toggle Button -->
+    <button class="chat-toggle" id="chat-toggle" aria-label="Toggle chat assistant" aria-expanded="false" aria-controls="chat-panel">
+      <span class="chat-toggle__icon chat-toggle__icon--open" aria-hidden="true">💬</span>
+      <span class="chat-toggle__icon chat-toggle__icon--close hidden" aria-hidden="true">✕</span>
+    </button>
+
+    <!-- Chat Panel -->
+    <div class="chat-panel hidden" id="chat-panel" role="region" aria-label="Invoice Assistant Chat">
+      
+      <!-- Panel Header -->
+      <div class="chat-panel__header">
+        <div class="chat-panel__header-logo">
+          <span class="chat-panel__header-icon" aria-hidden="true">🤖</span>
+          <div>
+            <h3 class="chat-panel__header-title">Invoice Assistant</h3>
+            <span class="chat-panel__header-status">Online · Gemini 2.5 Flash</span>
+          </div>
+        </div>
+        <button class="chat-panel__close-btn" id="chat-close" aria-label="Close chat">✕</button>
+      </div>
+
+      <!-- Messages Area -->
+      <div class="chat-panel__messages" id="chat-messages" aria-live="polite">
+        <div class="chat-message chat-message--assistant">
+          <div class="chat-message__bubble">
+            Hello! I am your Invoice Assistant. Ask me anything about your processed invoices, spending, flags, or vendors.
+          </div>
+        </div>
+      </div>
+
+      <!-- Typing Indicator -->
+      <div class="chat-panel__typing hidden" id="chat-typing" aria-hidden="true">
+        <div class="typing-indicator">
+          <span></span>
+          <span></span>
+          <span></span>
+        </div>
+        <span class="chat-panel__typing-text">Agent is thinking...</span>
+      </div>
+
+      <!-- Chat Input Form -->
+      <form class="chat-panel__input-area" id="chat-form" novalidate>
+        <input 
+          type="text" 
+          id="chat-input" 
+          class="chat-panel__input" 
+          placeholder="Ask a question..." 
+          autocomplete="off"
+          aria-label="Message to assistant"
+        />
+        <button type="submit" class="chat-panel__submit" id="chat-send" aria-label="Send message" disabled>
+          <span class="chat-panel__submit-icon" aria-hidden="true">➔</span>
+        </button>
+      </form>
+
+    </div>
+  </div>
+
+  <script src="script.js"></script>
+</body>
+</html>

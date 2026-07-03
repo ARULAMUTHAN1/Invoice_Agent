@@ -1,0 +1,24 @@
+# Dependencies
+node_modules/
+
+# Environment configurations and secrets
+.env
+.env.example
+
+# Version control system files
+.git/
+.gitignore
+
+# Log outputs
+*.log
+logs/
+npm-debug.log*
+
+# Docker files
+Dockerfile
+docker-compose.yml
+
+# Temporary test scripts or scratch data
+scratch/
+scratch_test.js
+uploads/

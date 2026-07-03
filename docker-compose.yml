@@ -1,0 +1,65 @@
+# ==============================================================================
+# Docker Compose Deployment Guide
+# ──────────────────────────────────────────────────────────────────────────────
+# 
+# 1. BUILD & RUN SERVICES:
+#    docker-compose up --build
+#
+# 2. RUN SERVICES IN DETACHED MODE (BACKGROUND):
+#    docker-compose up -d
+#
+# 3. VIEW APP CONTAINER LOGS:
+#    docker-compose logs -f app
+#
+# 4. STOP & TEAR DOWN CONTAINERS:
+#    docker-compose down
+#
+# ==============================================================================
+
+version: '3.8'
+
+services:
+  # ─── MongoDB Database Service ─────────────────────────────────────────────
+  mongo:
+    image: mongo:7
+    container_name: invoice_mongo_db
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - invoice_network
+
+  # ─── Node.js Backend & Static Frontend Service ────────────────────────────
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: invoice_app
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+      - MONGO_URI=mongodb://mongo:27017/invoiceDB
+      - GEMINI_API_KEY=${GEMINI_API_KEY}
+    depends_on:
+      - mongo
+    volumes:
+      - uploads_data:/app/uploads
+    networks:
+      - invoice_network
+
+# ─── Named Volumes for Long-term Storage Persistence ──────────────────────
+volumes:
+  mongo_data:
+    driver: local
+  uploads_data:
+    driver: local
+
+# ─── Private Internal Bridge Network ──────────────────────────────────────
+networks:
+  invoice_network:
+    driver: bridge
