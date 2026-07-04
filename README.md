@@ -326,8 +326,8 @@ Access the application at **[http://localhost:5000](http://localhost:5000)**. *(
 ## Author
 
 - **Name:** *Arulamuthan*
-- **Role:** *Full Stack Developer & AI Engineer*
-- **Institution:** *[College Name Placeholder]*
+- **Role:** *cybersecurity, Full Stack Developer & AI Engineer*
+
 
 ---
 
