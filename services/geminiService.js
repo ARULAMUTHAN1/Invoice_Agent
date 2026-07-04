@@ -50,6 +50,18 @@ const SAFETY_SETTINGS = [
   { category: HarmCategory.HARM_CATEGORY_DANGEROUS_CONTENT, threshold: HarmBlockThreshold.BLOCK_NONE },
 ];
 
+// ─── Category List ────────────────────────────────────────────────────────
+/** Single source of truth — shared between the prompt and the Mongoose enum. */
+const CATEGORY_LIST = [
+  'Software & Subscriptions',
+  'Office Supplies',
+  'Travel',
+  'Utilities',
+  'Professional Services',
+  'Equipment',
+  'Other',
+];
+
 // ─── Extraction Prompt ─────────────────────────────────────────────────────
 const EXTRACTION_PROMPT = `You are an expert invoice data extraction and risk assessment AI.
 Analyse the provided invoice document (image or PDF), extract all data, and assess its risk.
@@ -73,10 +85,17 @@ Return a single, valid JSON object with EXACTLY this structure (use null for mis
   "tax":           number | null,
   "total_amount":  number | null,
   "currency":      "ISO 4217 code e.g. USD, EUR, INR | null",
+  "category":      "one of the fixed category strings listed below",
   "risk_level":    "low | medium | high",
   "flags":         ["array of short strings describing any anomalies or concerns"],
   "reasoning":     "string explaining the risk_level decision | null"
 }
+
+Category rules:
+- "category" is REQUIRED — never null.
+- Choose the single best matching category based on the line items and vendor type.
+- Always pick from this fixed list, never invent a new category:
+  ${CATEGORY_LIST.map(c => `"${c}"`).join(', ')}
 
 Risk assessment guidelines:
 - "low"    → amounts match, dates are valid, no anomalies detected.
@@ -137,6 +156,74 @@ Return ONLY the JSON object — no markdown fences, no explanation outside the J
 // ═══════════════════════════════════════════════════════════════════════════
 
 /**
+ * Extract HTTP status code from Mongoose/SDK errors if present,
+ * or search the error message for standard HTTP status code patterns.
+ *
+ * @param {Error} err
+ * @returns {number|null}
+ */
+const getHttpStatusFromError = (err) => {
+  if (err.status) return err.status;
+  const msg = err.message || '';
+  const match = msg.match(/\[(400|401|403|429|500|502|503|504)\]/);
+  if (match) return parseInt(match[1], 10);
+  const statusMatch = msg.match(/\b(400|401|403|429|500|502|503|504)\b/);
+  if (statusMatch) return parseInt(statusMatch[1], 10);
+  return null;
+};
+
+/**
+ * Executes a Gemini API call with exponential backoff and timeout safety.
+ *
+ * @param {Function} apiCallFn - Async function returning a promise that makes the API request.
+ *                              Receives the AbortSignal as its first argument.
+ * @param {number} [maxRetries=3]
+ * @returns {Promise<any>}
+ */
+const callWithRetry = async (apiCallFn, maxRetries = 3) => {
+  let attempt = 0;
+  while (true) {
+    attempt++;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 15000); // 15 seconds request timeout
+
+    try {
+      const result = await apiCallFn(controller.signal);
+      clearTimeout(timer);
+      return result;
+    } catch (err) {
+      clearTimeout(timer);
+
+      const isTimeout = err.name === 'AbortError' || err.message?.includes('aborted') || err.message?.includes('Timeout');
+      const errMsg = err.message || '';
+      const errStatus = err.status || getHttpStatusFromError(err);
+
+      // Check if this error is non-retryable
+      const isInvalidKey = errStatus === 401 || errStatus === 403 || errMsg.includes('API key not valid') || errMsg.includes('API_KEY_INVALID');
+      const isBadRequest = errStatus === 400 || errMsg.includes('400') || errMsg.includes('INVALID_ARGUMENT');
+
+      // Throw immediately for auth/bad request errors, or if we ran out of retries
+      if (isInvalidKey || isBadRequest || attempt > maxRetries) {
+        if (isInvalidKey) {
+          throw new Error('Gemini API key is invalid or unauthorized. Please verify your configuration.');
+        }
+        if (attempt > maxRetries) {
+          throw new Error(`Gemini API is currently unavailable after ${maxRetries} attempts. Please try again shortly. (Original error: ${err.message})`);
+        }
+        throw err;
+      }
+
+      // Exponential backoff back-off: 1s, 2s, 4s
+      const backoffMs = Math.pow(2, attempt - 1) * 1000;
+      const reason = isTimeout ? 'Timeout (15s)' : `Error status ${errStatus || 'unknown'} (${err.message.slice(0, 60)})`;
+      console.warn(`[Gemini API] Attempt ${attempt}/${maxRetries} failed: ${reason}. Retrying in ${backoffMs/1000}s...`);
+
+      await new Promise((resolve) => setTimeout(resolve, backoffMs));
+    }
+  }
+};
+
+/**
  * Convert a Node.js Buffer to a Gemini inline-data content part.
  *
  * @param {Buffer} buffer   - Raw file bytes.
@@ -192,6 +279,11 @@ const validateParsed = (obj) => {
 
   if (!Array.isArray(obj.line_items)) {
     throw new Error('"line_items" must be an array.');
+  }
+
+  // Gracefully coerce an unrecognised category to 'Other' instead of failing
+  if (!obj.category || !CATEGORY_LIST.includes(obj.category)) {
+    obj.category = 'Other';
   }
 };
 
@@ -268,9 +360,12 @@ const extractInvoiceData = async (fileBuffer, mimeType) => {
     const model = genAI.getGenerativeModel({
       model: MODEL_NAME,
       safetySettings: SAFETY_SETTINGS,
+      generationConfig: { responseMimeType: 'application/json' },
     });
 
-    const result = await model.generateContent([EXTRACTION_PROMPT, filePart]);
+    const result = await callWithRetry((signal) =>
+      model.generateContent([EXTRACTION_PROMPT, filePart], { signal })
+    );
     const response = result.response;
 
     // Check for a blocked response (safety / recitation filters)
@@ -349,7 +444,9 @@ const askAboutInvoice = async (question, invoiceData) => {
     `Answer concisely and factually based only on the invoice data above.`;
 
   try {
-    const result = await model.generateContent(prompt);
+    const result = await callWithRetry((signal) =>
+      model.generateContent(prompt, { signal })
+    );
     return result.response.text();
   } catch (err) {
     throw new Error(`[askAboutInvoice] Gemini API call failed — ${err.message}`);
@@ -417,9 +514,12 @@ const detectAnomalies = async (currentInvoice, pastInvoices) => {
     const model = genAI.getGenerativeModel({
       model: MODEL_NAME,
       safetySettings: SAFETY_SETTINGS,
+      generationConfig: { responseMimeType: 'application/json' },
     });
 
-    const result = await model.generateContent(fullPrompt);
+    const result = await callWithRetry((signal) =>
+      model.generateContent(fullPrompt, { signal })
+    );
     const response = result.response;
 
     // Guard against blocked responses
@@ -544,11 +644,68 @@ ${message.trim()}`;
       safetySettings: SAFETY_SETTINGS
     });
 
-    const result = await model.generateContent(fullPrompt);
+    const result = await callWithRetry((signal) =>
+      model.generateContent(fullPrompt, { signal })
+    );
     return result.response.text();
   } catch (err) {
     console.error('[chatWithAgent] Error calling Gemini:', err.message);
     return "I don't have enough invoice data to answer that — could you upload more invoices or rephrase your question?";
+  }
+};
+
+// ─── Semantic Search Helpers ───────────────────────────────────────────────
+
+/**
+ * Build a rich text document from an invoice object for embedding.
+ * Concatenates the fields most useful for semantic matching:
+ *   vendor name, category, and all line-item descriptions.
+ *
+ * @param {Object} inv  - Invoice object (extracted data or Mongoose document).
+ * @returns {string}    - Plain text ready to embed (e.g. to pass to generateEmbedding).
+ */
+const buildInvoiceText = (inv) => {
+  const parts = [];
+  if (inv.vendor_name)  parts.push(`Vendor: ${inv.vendor_name}`);
+  if (inv.category)     parts.push(`Category: ${inv.category}`);
+  if (Array.isArray(inv.line_items)) {
+    inv.line_items.forEach((item) => {
+      if (item.description) parts.push(item.description);
+    });
+  }
+  // Fallback so we always embed something meaningful
+  if (parts.length === 0 && inv.invoice_number) {
+    parts.push(`Invoice ${inv.invoice_number}`);
+  }
+  return parts.join(' | ');
+};
+
+/**
+ * Convert a text string to a 768-dimensional embedding vector using
+ * Gemini's text-embedding-004 model.
+ *
+ * @param {string} text  - Plain text to embed (max ~2 048 tokens).
+ * @returns {Promise<number[]>}  - 768-element float array.
+ *
+ * @throws {Error} If the API key is missing or the Gemini call fails.
+ *
+ * @example
+ * const vec = await generateEmbedding('AWS cloud services subscription');
+ * // vec.length === 768
+ */
+const generateEmbedding = async (text) => {
+  ensureApiKey();
+  if (!text || !String(text).trim()) {
+    throw new Error('[generateEmbedding] text must be a non-empty string.');
+  }
+  try {
+    const embeddingModel = genAI.getGenerativeModel({ model: 'gemini-embedding-001' });
+    const result = await callWithRetry((signal) =>
+      embeddingModel.embedContent(String(text).trim(), { signal })
+    );
+    return result.embedding.values; // float array
+  } catch (err) {
+    throw new Error(`[generateEmbedding] Gemini embedding API call failed — ${err.message}`);
   }
 };
 
@@ -558,6 +715,9 @@ module.exports = {
   detectAnomalies,
   askAboutInvoice,
   chatWithAgent,
+  generateEmbedding,
+  buildInvoiceText,
+  CATEGORY_LIST,
   // Exposed for unit testing
   _internals: {
     bufferToGenerativePart,
@@ -567,5 +727,6 @@ module.exports = {
     EXTRACTION_PROMPT,
     ANOMALY_PROMPT,
     MODEL_NAME,
+    CATEGORY_LIST,
   },
 };

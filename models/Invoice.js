@@ -31,6 +31,11 @@ const LineItemSchema = new mongoose.Schema(
 // ─── Main Invoice Schema ───────────────────────────────────────────────────
 const InvoiceSchema = new mongoose.Schema(
   {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: [true, 'User ID is required'],
+    },
     // ── File Metadata (set by upload handler) ──────────────────────────────
     originalFileName: {
       type: String,
@@ -148,6 +153,33 @@ const InvoiceSchema = new mongoose.Schema(
       default: null,
     },
 
+    // ── Spend Category (AI-classified) ────────────────────────────────────
+    category: {
+      type: String,
+      enum: {
+        values: [
+          'Software & Subscriptions',
+          'Office Supplies',
+          'Travel',
+          'Utilities',
+          'Professional Services',
+          'Equipment',
+          'Other',
+        ],
+        message: 'category must be one of the allowed spend categories',
+      },
+      default: 'Other',
+    },
+
+    // ── Semantic Embedding (768-dim Gemini text-embedding-004 vector) ─────
+    // Stored as a plain array so it survives JSON round-trips cleanly.
+    // Used to seed the in-process vector store on startup for semantic search.
+    embedding: {
+      type: mongoose.Schema.Types.Mixed, // number[] — avoid Mongoose Buffer overhead
+      default: null,
+      select: false, // omit from all queries by default (large field)
+    },
+
     // ── Raw Gemini Response (audit trail) ─────────────────────────────────
     rawGeminiResponse: {
       type: mongoose.Schema.Types.Mixed,
@@ -167,11 +199,13 @@ const InvoiceSchema = new mongoose.Schema(
 InvoiceSchema.index({ vendor_name: 1, invoice_number: 1 });
 
 // Individual indexes for single-field queries
+InvoiceSchema.index({ userId: 1 });
 InvoiceSchema.index({ vendor_name: 1 });
 InvoiceSchema.index({ invoice_number: 1 });
 InvoiceSchema.index({ invoice_date: -1 });
 InvoiceSchema.index({ risk_level: 1 });     // quickly filter high-risk invoices
 InvoiceSchema.index({ status: 1 });
+InvoiceSchema.index({ category: 1 });       // spend-by-category chart queries
 InvoiceSchema.index({ createdAt: -1 });
 
 // ─── Virtuals ──────────────────────────────────────────────────────────────

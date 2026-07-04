@@ -39,7 +39,10 @@
 | Icon | Feature | Description |
 | :---: | :--- | :--- |
 | 👁️ | **Multimodal Extraction** | Bypasses OCR text layout constraints by analyzing PDF and image invoices directly. |
-| 📝 | **Structured JSON Output** | Enforces a strict type-safe schema map representing items, totals, vendor data, and currencies. |
+| 🏷️ | **Spend Category Classify** | AI classifies invoice contents into predefined spend categories (Software, Utilities, Travel, etc.). |
+| 📊 | **Category Analytics** | Dynamic spend-by-category analysis dashboard powered by a Chart.js doughnut visualization. |
+| 🧠 | **Semantic Smart Search** | Vector search matching invoice contents using Gemini embeddings (`gemini-embedding-001`) and a local similarity index. |
+| 🔑 | **User Authentication** | Secure user registration and login with `bcrypt` password hashing, JWT sessions, and strict multi-user data isolation. |
 | 🛡️ | **Anomaly Detection** | Compares current transactions against up to 20 historical documents for the same vendor. |
 | 💬 | **Conversational Chat Agent** | Real-time chat widget grounded in active MongoDB data with in-memory session tracking. |
 | 📁 | **Mongoose Persistence** | Compound indexing on `vendor_name` and `invoice_number` for fast lookups. |

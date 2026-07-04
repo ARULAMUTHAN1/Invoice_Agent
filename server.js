@@ -7,6 +7,9 @@ const fs = require('fs');
 
 const invoiceRoutes = require('./routes/invoice');
 const chatRoutes    = require('./routes/chat');
+const authRoutes    = require('./routes/auth');
+const authMiddleware = require('./middleware/auth');
+const dbCheck        = require('./middleware/dbCheck');
 
 // ─── App Initialisation ────────────────────────────────────────────────────
 const app = express();
@@ -35,8 +38,9 @@ app.use(express.static(path.join(__dirname, 'public')));
 app.use('/uploads', express.static(uploadDir));
 
 // ─── Routes ───────────────────────────────────────────────────────────────
-app.use('/api/invoice', invoiceRoutes);
-app.use('/api/chat',    chatRoutes);
+app.use('/api/auth',    dbCheck, authRoutes);
+app.use('/api/invoice', dbCheck, authMiddleware, invoiceRoutes);
+app.use('/api/chat',    dbCheck, authMiddleware, chatRoutes);
 
 // Health-check endpoint
 app.get('/health', (_req, res) => {
@@ -68,7 +72,7 @@ const connectDB = async () => {
     console.log('✅  MongoDB connected successfully');
   } catch (err) {
     console.error('❌  MongoDB connection error:', err.message);
-    process.exit(1);
+    console.warn('⚠️  Server is running in offline/degraded mode without database connectivity.');
   }
 };
 

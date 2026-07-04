@@ -9,6 +9,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="style.css" />
+  <script src="https://cdn.jsdelivr.net/npm/chart.js" defer></script>
 </head>
 <body>
 
@@ -21,12 +22,50 @@
 
     <!-- ─── Header ─────────────────────────────────────────────────────── -->
     <header class="header">
-      <div class="header__logo">
-        <span class="header__logo-icon" aria-hidden="true">⚡</span>
-        <span class="header__logo-text">InvoiceAI</span>
+      <div class="header__left">
+        <div class="header__logo">
+          <span class="header__logo-icon" aria-hidden="true">⚡</span>
+          <span class="header__logo-text">InvoiceAI</span>
+        </div>
+        <p class="header__tagline">Powered by Gemini · Instant extraction &amp; anomaly detection</p>
       </div>
-      <p class="header__tagline">Powered by Gemini · Instant extraction &amp; anomaly detection</p>
+      <div class="header__user-panel" id="user-panel">
+        <span class="header__username">Logged in as: <strong id="display-username">...</strong></span>
+        <button class="btn btn--sm btn--secondary" id="logout-btn">Log Out</button>
+      </div>
     </header>
+
+    <!-- ─── Stats Bar ──────────────────────────────────────────────────── -->
+    <section class="stats-bar" id="stats-bar" aria-label="Invoice statistics">
+      <div class="stat-card" id="stat-total-invoices">
+        <div class="stat-card__icon" aria-hidden="true">🗂️</div>
+        <div class="stat-card__body">
+          <span class="stat-card__value" id="stat-val-total">—</span>
+          <span class="stat-card__label">Total Invoices</span>
+        </div>
+      </div>
+      <div class="stat-card" id="stat-total-spend">
+        <div class="stat-card__icon" aria-hidden="true">💰</div>
+        <div class="stat-card__body">
+          <span class="stat-card__value" id="stat-val-spend">—</span>
+          <span class="stat-card__label">Total Spend</span>
+        </div>
+      </div>
+      <div class="stat-card stat-card--danger" id="stat-high-risk">
+        <div class="stat-card__icon" aria-hidden="true">⚠️</div>
+        <div class="stat-card__body">
+          <span class="stat-card__value" id="stat-val-highrisk">—</span>
+          <span class="stat-card__label">High Risk</span>
+        </div>
+      </div>
+      <div class="stat-card stat-card--accent" id="stat-vendors">
+        <div class="stat-card__icon" aria-hidden="true">🏢</div>
+        <div class="stat-card__body">
+          <span class="stat-card__value" id="stat-val-vendors">—</span>
+          <span class="stat-card__label">Unique Vendors</span>
+        </div>
+      </div>
+    </section>
 
     <main>
 
@@ -236,6 +275,50 @@
           <button type="button" class="btn btn--sm btn--ghost" id="refresh-btn" aria-label="Refresh history">
             <span class="refresh-icon" aria-hidden="true">↻</span> Refresh
           </button>
+        </div>
+
+        <!-- Spend by Category Pie Chart -->
+        <div class="chart-section" id="chart-section">
+          <div class="chart-section__header">
+            <h3 class="chart-section__title">
+              <span class="chart-section__icon" aria-hidden="true">📊</span>
+              Spend by Category
+            </h3>
+            <span class="chart-section__subtitle">Total amount grouped by AI-classified category</span>
+          </div>
+          <div class="chart-section__body">
+            <div class="chart-container">
+              <canvas id="category-pie-chart" aria-label="Spend by category pie chart" role="img"></canvas>
+              <div class="chart-empty" id="chart-empty" aria-live="polite">
+                <span class="chart-empty__icon" aria-hidden="true">📭</span>
+                <span>No category data yet — upload an invoice to see the chart.</span>
+              </div>
+            </div>
+            <div class="chart-legend" id="chart-legend" aria-label="Chart legend"></div>
+          </div>
+        </div>
+
+        <!-- Smart Search Bar -->
+        <div class="smart-search-bar">
+          <div class="smart-search-header">
+            <span class="smart-search-title-icon">🧠</span>
+            <span class="smart-search-title">Smart Search</span>
+            <span class="smart-search-help">Search invoices semantically (e.g. "server subscription", "office hardware", "utilities")</span>
+          </div>
+          <div class="smart-search-input-group">
+            <input
+              type="search"
+              id="smart-search-input"
+              class="smart-search-input"
+              placeholder="Type your query and press Search…"
+              aria-label="Semantic smart search"
+            />
+            <button id="smart-search-btn" class="btn btn--accent smart-search-btn">Search</button>
+            <button id="smart-search-clear-btn" class="btn btn--secondary hidden">Clear</button>
+          </div>
+          <div id="smart-search-badge-info" class="smart-search-info-banner hidden">
+            <span>✨ Showing top semantic search matches from vector database</span>
+          </div>
         </div>
 
         <!-- Filter bar -->

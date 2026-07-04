@@ -1,0 +1,421 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Access Portal - Invoice Processing Agent</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --clr-bg: #090a0f;
+      --clr-surface: rgba(18, 20, 31, 0.8);
+      --clr-border: rgba(255, 255, 255, 0.08);
+      --clr-border-hover: rgba(255, 255, 255, 0.16);
+      --clr-accent: #6366f1;
+      --clr-accent-hover: #4f46e5;
+      --clr-text-primary: #f3f4f6;
+      --clr-text-secondary: #9ca3af;
+      --clr-text-muted: #6b7280;
+      --clr-danger: #ef4444;
+      --clr-success: #10b981;
+      --radius-lg: 12px;
+      --radius-md: 8px;
+      --font-sans: 'Inter', system-ui, sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--clr-bg);
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(99, 102, 241, 0.1) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(124, 58, 237, 0.08) 0px, transparent 50%);
+      color: var(--clr-text-primary);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+      overflow-x: hidden;
+    }
+
+    .auth-container {
+      width: 100%;
+      max-width: 440px;
+      background: var(--clr-surface);
+      border: 1px solid var(--clr-border);
+      border-radius: var(--radius-lg);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+      padding: 40px;
+      animation: fade-in 0.6s cubic-bezier(0.16, 1, 0.3, 1) both;
+    }
+
+    @keyframes fade-in {
+      from { opacity: 0; transform: translateY(15px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .auth-header {
+      text-align: center;
+      margin-bottom: 32px;
+    }
+
+    .auth-logo {
+      font-size: 32px;
+      margin-bottom: 12px;
+      display: inline-block;
+      filter: drop-shadow(0 0 10px rgba(99, 102, 241, 0.4));
+    }
+
+    .auth-title {
+      font-size: 22px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      margin-bottom: 6px;
+    }
+
+    .auth-subtitle {
+      font-size: 13px;
+      color: var(--clr-text-secondary);
+    }
+
+    .form-toggle {
+      display: flex;
+      background: rgba(255, 255, 255, 0.03);
+      border: 1px solid var(--clr-border);
+      border-radius: var(--radius-md);
+      padding: 4px;
+      margin-bottom: 28px;
+    }
+
+    .toggle-btn {
+      flex: 1;
+      background: none;
+      border: none;
+      color: var(--clr-text-secondary);
+      font-size: 13px;
+      font-weight: 600;
+      padding: 8px 12px;
+      border-radius: calc(var(--radius-md) - 2px);
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .toggle-btn.active {
+      background: var(--clr-accent);
+      color: #fff;
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
+    }
+
+    .input-group {
+      margin-bottom: 20px;
+    }
+
+    .input-label {
+      display: block;
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      color: var(--clr-text-secondary);
+      margin-bottom: 8px;
+    }
+
+    .input-field {
+      width: 100%;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--clr-border);
+      border-radius: var(--radius-md);
+      color: var(--clr-text-primary);
+      padding: 12px 16px;
+      font-size: 14px;
+      outline: none;
+      transition: all 0.2s ease;
+    }
+
+    .input-field:focus {
+      border-color: var(--clr-accent);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.15);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .submit-btn {
+      width: 100%;
+      background: var(--clr-accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius-md);
+      padding: 14px 20px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.2s ease;
+      box-shadow: 0 4px 12px rgba(99, 102, 241, 0.2);
+      margin-top: 10px;
+    }
+
+    .submit-btn:hover {
+      background: var(--clr-accent-hover);
+      box-shadow: 0 6px 16px rgba(99, 102, 241, 0.3);
+      transform: translateY(-1px);
+    }
+
+    .submit-btn:active {
+      transform: translateY(0);
+    }
+
+    .submit-btn:disabled {
+      background: var(--clr-text-muted);
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+
+    .auth-alert {
+      padding: 12px 16px;
+      border-radius: var(--radius-md);
+      font-size: 13px;
+      margin-bottom: 24px;
+      animation: fade-in 0.3s ease;
+    }
+
+    .auth-alert--danger {
+      background: rgba(239, 68, 68, 0.1);
+      border: 1px solid rgba(239, 68, 68, 0.25);
+      color: #fca5a5;
+    }
+
+    .auth-alert--success {
+      background: rgba(16, 185, 129, 0.1);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      color: #a7f3d0;
+    }
+
+    .hidden {
+      display: none !important;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="auth-container">
+    <div class="auth-header">
+      <span class="auth-logo">🧠</span>
+      <h1 class="auth-title">Invoice Processing Agent</h1>
+      <p class="auth-subtitle">AI-Powered Extraction &amp; Risk Guard</p>
+    </div>
+
+    <div class="form-toggle">
+      <button type="button" class="toggle-btn active" id="toggle-login">Sign In</button>
+      <button type="button" class="toggle-btn" id="toggle-register">Create Account</button>
+    </div>
+
+    <!-- Alert container -->
+    <div id="auth-alert" class="auth-alert hidden"></div>
+
+    <!-- LOGIN FORM -->
+    <form id="login-form">
+      <div class="input-group">
+        <label for="login-email" class="input-label">Email Address</label>
+        <input 
+          type="email" 
+          id="login-email" 
+          class="input-field" 
+          placeholder="name@company.com" 
+          required 
+          autocomplete="email"
+        />
+      </div>
+      <div class="input-group">
+        <label for="login-password" class="input-label">Password</label>
+        <input 
+          type="password" 
+          id="login-password" 
+          class="input-field" 
+          placeholder="••••••••" 
+          required 
+          autocomplete="current-password"
+        />
+      </div>
+      <button type="submit" class="submit-btn" id="login-submit">Sign In</button>
+    </form>
+
+    <!-- REGISTER FORM -->
+    <form id="register-form" class="hidden">
+      <div class="input-group">
+        <label for="reg-username" class="input-label">Username</label>
+        <input 
+          type="text" 
+          id="reg-username" 
+          class="input-field" 
+          placeholder="johndoe" 
+          required 
+          autocomplete="username"
+        />
+      </div>
+      <div class="input-group">
+        <label for="reg-email" class="input-label">Email Address</label>
+        <input 
+          type="email" 
+          id="reg-email" 
+          class="input-field" 
+          placeholder="name@company.com" 
+          required 
+          autocomplete="email"
+        />
+      </div>
+      <div class="input-group">
+        <label for="reg-password" class="input-label">Password</label>
+        <input 
+          type="password" 
+          id="reg-password" 
+          class="input-field" 
+          placeholder="At least 6 characters" 
+          minlength="6"
+          required 
+          autocomplete="new-password"
+        />
+      </div>
+      <button type="submit" class="submit-btn" id="register-submit">Create Account</button>
+    </form>
+  </div>
+
+  <script>
+    // Elements
+    const toggleLogin       = document.getElementById('toggle-login');
+    const toggleRegister    = document.getElementById('toggle-register');
+    const loginForm         = document.getElementById('login-form');
+    const registerForm      = document.getElementById('register-form');
+    const authAlert         = document.getElementById('auth-alert');
+    
+    // Toggle forms
+    toggleLogin.addEventListener('click', () => {
+      toggleLogin.classList.add('active');
+      toggleRegister.classList.remove('active');
+      loginForm.classList.remove('hidden');
+      registerForm.classList.add('hidden');
+      clearAlert();
+    });
+
+    toggleRegister.addEventListener('click', () => {
+      toggleRegister.classList.add('active');
+      toggleLogin.classList.remove('active');
+      registerForm.classList.remove('hidden');
+      loginForm.classList.add('hidden');
+      clearAlert();
+    });
+
+    // Alert helpers
+    const showAlert = (message, type = 'danger') => {
+      authAlert.textContent = message;
+      authAlert.className = `auth-alert auth-alert--${type}`;
+    };
+
+    const clearAlert = () => {
+      authAlert.textContent = '';
+      authAlert.classList.add('hidden');
+    };
+
+    // Form Submissions
+    loginForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      clearAlert();
+      
+      const email = document.getElementById('login-email').value;
+      const password = document.getElementById('login-password').value;
+      const submitBtn = document.getElementById('login-submit');
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Verifying...';
+
+      try {
+        const res = await fetch('/api/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password }),
+        });
+        const json = await res.json();
+
+        if (!res.ok || !json.success) {
+          showAlert(json.message || 'Login failed. Please check credentials.');
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Sign In';
+          return;
+        }
+
+        showAlert('Access granted. Redirecting...', 'success');
+        
+        // Save token & username to localStorage as requested
+        localStorage.setItem('invoice_agent_token', json.token);
+        if (json.user && json.user.username) {
+          localStorage.setItem('invoice_agent_username', json.user.username);
+        }
+
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 800);
+
+      } catch (err) {
+        showAlert('Network error connecting to auth server.');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Sign In';
+      }
+    });
+
+    registerForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      clearAlert();
+
+      const username = document.getElementById('reg-username').value;
+      const email = document.getElementById('reg-email').value;
+      const password = document.getElementById('reg-password').value;
+      const submitBtn = document.getElementById('register-submit');
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Creating account...';
+
+      try {
+        const res = await fetch('/api/auth/register', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ username, email, password }),
+        });
+        const json = await res.json();
+
+        if (!res.ok || !json.success) {
+          showAlert(json.message || 'Registration failed.');
+          submitBtn.disabled = false;
+          submitBtn.textContent = 'Create Account';
+          return;
+        }
+
+        showAlert('Account created. Redirecting...', 'success');
+        
+        // Save token & username to localStorage
+        localStorage.setItem('invoice_agent_token', json.token);
+        if (json.user && json.user.username) {
+          localStorage.setItem('invoice_agent_username', json.user.username);
+        }
+
+        setTimeout(() => {
+          window.location.href = '/';
+        }, 800);
+
+      } catch (err) {
+        showAlert('Network error connecting to auth server.');
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Create Account';
+      }
+    });
+  </script>
+</body>
+</html>

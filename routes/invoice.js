@@ -22,7 +22,10 @@ const {
   extractInvoiceData,
   detectAnomalies,
   askAboutInvoice,
+  generateEmbedding,
+  buildInvoiceText,
 } = require('../services/geminiService');
+const vectorStore = require('../services/vectorStore');
 
 // ═══════════════════════════════════════════════════════════════════════════
 // Multer — disk storage, file-type whitelist, 10 MB cap
@@ -141,6 +144,7 @@ router.post(
     // ── Step 1: persist a placeholder record immediately ───────────────────
     // This ensures we always have a record even if AI calls fail partway through.
     const invoice = new Invoice({
+      userId:           req.userId,
       originalFileName: originalname,
       storedFileName:   filename,
       filePath,
@@ -181,6 +185,16 @@ router.post(
     } catch (aiErr) {
       console.error(`[POST /upload] extractInvoiceData failed for ${invoice._id}:`, aiErr.message);
       await _markFailed(invoice, `AI extraction failed: ${aiErr.message}`);
+
+      const isUnavailable = aiErr.message?.includes('unavailable') || aiErr.message?.includes('attempts') || aiErr.message?.includes('Timeout') || aiErr.message?.includes('rate limit') || aiErr.message?.includes('429') || aiErr.message?.includes('503');
+      if (isUnavailable) {
+        return res.status(503).json({
+          success: false,
+          error: "AI service temporarily unavailable, please try again",
+          detail: aiErr.message,
+        });
+      }
+
       return res.status(422).json({
         success: false,
         message: 'AI could not extract data from the uploaded document.',
@@ -193,6 +207,7 @@ router.post(
     if (extractedData.vendor_name) {
       try {
         pastInvoices = await Invoice.find({
+          userId:      req.userId,
           vendor_name: extractedData.vendor_name,
           status:      'completed',               // only use successfully processed records
           _id:         { $ne: invoice._id },      // exclude the current record
@@ -254,6 +269,8 @@ router.post(
       tax:              extractedData.tax             ?? null,
       total_amount:     extractedData.total_amount    ?? null,
       currency:         extractedData.currency        ?? 'USD',
+      // AI-classified spend category
+      category:         extractedData.category        ?? 'Other',
       // Merged AI risk assessment
       risk_level:       finalRiskLevel,
       flags:            mergedFlags,
@@ -274,8 +291,27 @@ router.post(
       });
     }
 
-    // ── Step 8: return the full saved document ─────────────────────────────
+    // ── Step 8: return the full saved document ───────────────────────────────────────
     console.log(`✅  Invoice ${invoice._id} processed — risk: ${finalRiskLevel}, flags: ${mergedFlags.length}`);
+
+    // ── Step 9 (async, non-blocking): generate & store semantic embedding ───
+    // This runs after the response is sent so it never delays the client.
+    setImmediate(async () => {
+      try {
+        const invoiceText = buildInvoiceText(invoice.toObject());
+        if (invoiceText.trim()) {
+          const vector = await generateEmbedding(invoiceText);
+          // Persist to MongoDB so the vector store survives restarts
+          await Invoice.findByIdAndUpdate(invoice._id, { embedding: vector });
+          // Add to in-process vector store for immediate search availability
+          vectorStore.upsert(String(invoice._id), vector);
+          console.log(`🧠  Embedding stored for invoice ${invoice._id} (${vectorStore.size()} total)`);
+        }
+      } catch (embErr) {
+        // Non-fatal — invoice is saved and returned; search just won't include it yet
+        console.warn(`[⚠️  Embedding] Failed for invoice ${invoice._id}:`, embErr.message);
+      }
+    });
 
     return res.status(201).json({
       success: true,
@@ -290,6 +326,98 @@ router.post(
     });
   }
 );
+
+// ═══════════════════════════════════════════════════════════════════════════
+// POST /api/invoice/search  —  Semantic vector search
+// ═══════════════════════════════════════════════════════════════════════════
+
+/**
+ * Accept a natural-language query, embed it with Gemini, search the in-process
+ * vector store for the top-5 most similar invoices, then return full documents
+ * fetched from MongoDB using the stored _id references.
+ *
+ * Body (JSON):
+ *   { "query": "software subscription AWS" }
+ *
+ * Response:
+ *   { success: true, results: Invoice[], query: string, count: number }
+ */
+router.post('/search', async (req, res) => {
+  const { query } = req.body;
+
+  if (!query || !String(query).trim()) {
+    return res.status(400).json({
+      success: false,
+      message: 'Request body must include a non-empty "query" string.',
+    });
+  }
+
+  // Guard: nothing in the vector store yet
+  if (vectorStore.size() === 0) {
+    return res.status(200).json({
+      success: true,
+      query: query.trim(),
+      count: 0,
+      results: [],
+      message: 'No invoices have been indexed yet. Upload an invoice first.',
+    });
+  }
+
+  try {
+    // 1. Embed the query
+    const queryVector = await generateEmbedding(String(query).trim());
+
+    // 2. Search the in-process vector store (top 5 by cosine similarity)
+    const hits = vectorStore.search(queryVector, 5);
+
+    if (hits.length === 0) {
+      return res.status(200).json({
+        success: true,
+        query: query.trim(),
+        count: 0,
+        results: [],
+      });
+    }
+
+    // 3. Fetch full documents from MongoDB in hit order, filtered by userId
+    const ids = hits.map((h) => h.id);
+    const invoices = await Invoice.find({ _id: { $in: ids }, userId: req.userId })
+      .select('-rawGeminiResponse')
+      .lean();
+
+    // Re-order to match vector-store ranking (MongoDB doesn't preserve $in order)
+    const invoiceMap = new Map(invoices.map((inv) => [String(inv._id), inv]));
+    const ordered = hits
+      .map((h) => {
+        const inv = invoiceMap.get(h.id);
+        return inv ? { ...inv, _searchScore: parseFloat(h.score.toFixed(4)) } : null;
+      })
+      .filter(Boolean);
+
+    return res.status(200).json({
+      success: true,
+      query:   query.trim(),
+      count:   ordered.length,
+      results: ordered,
+    });
+
+  } catch (err) {
+    console.error('[POST /search]', err);
+    const isUnavailable = err.message?.includes('unavailable') || err.message?.includes('attempts') || err.message?.includes('Timeout') || err.message?.includes('rate limit') || err.message?.includes('429') || err.message?.includes('503');
+    if (isUnavailable) {
+      return res.status(503).json({
+        success: false,
+        error: "AI service temporarily unavailable, please try again",
+        detail: err.message,
+      });
+    }
+    return res.status(500).json({
+      success: false,
+      message: 'Semantic search failed.',
+      detail:  err.message,
+    });
+  }
+});
 
 // ═══════════════════════════════════════════════════════════════════════════
 // GET /api/invoice/history
@@ -311,7 +439,7 @@ router.get('/history', async (req, res) => {
     const skip  = (page - 1) * limit;
 
     // ── Build filter ────────────────────────────────────────────────────────
-    const filter = {};
+    const filter = { userId: req.userId };
     if (req.query.status)     filter.status     = req.query.status;
     if (req.query.risk_level) filter.risk_level = req.query.risk_level;
     if (req.query.vendor) {
@@ -362,12 +490,12 @@ router.get('/history', async (req, res) => {
  */
 router.get('/:id', async (req, res) => {
   try {
-    const invoice = await Invoice.findById(req.params.id);
+    const invoice = await Invoice.findOne({ _id: req.params.id, userId: req.userId });
 
     if (!invoice) {
       return res.status(404).json({
         success: false,
-        message: `Invoice with id "${req.params.id}" not found.`,
+        message: `Invoice with id "${req.params.id}" not found or unauthorized.`,
       });
     }
 
@@ -399,16 +527,17 @@ router.get('/:id', async (req, res) => {
  */
 router.delete('/:id', async (req, res) => {
   try {
-    const invoice = await Invoice.findByIdAndDelete(req.params.id);
+    const invoice = await Invoice.findOneAndDelete({ _id: req.params.id, userId: req.userId });
 
     if (!invoice) {
       return res.status(404).json({
         success: false,
-        message: `Invoice with id "${req.params.id}" not found.`,
+        message: `Invoice with id "${req.params.id}" not found or unauthorized.`,
       });
     }
 
     safeUnlink(invoice.filePath);
+    vectorStore.remove(invoice._id);
 
     return res.status(200).json({
       success: true,
@@ -450,12 +579,12 @@ router.post('/:id/ask', async (req, res) => {
       });
     }
 
-    const invoice = await Invoice.findById(req.params.id);
+    const invoice = await Invoice.findOne({ _id: req.params.id, userId: req.userId });
 
     if (!invoice) {
       return res.status(404).json({
         success: false,
-        message: `Invoice with id "${req.params.id}" not found.`,
+        message: `Invoice with id "${req.params.id}" not found or unauthorized.`,
       });
     }
 
@@ -482,16 +611,23 @@ router.post('/:id/ask', async (req, res) => {
       });
     }
     console.error('[POST /:id/ask]', err);
+    const isUnavailable = err.message?.includes('unavailable') || err.message?.includes('attempts') || err.message?.includes('Timeout') || err.message?.includes('rate limit') || err.message?.includes('429') || err.message?.includes('503');
+    if (isUnavailable) {
+      return res.status(503).json({
+        success: false,
+        error: "AI service temporarily unavailable, please try again",
+        detail: err.message,
+      });
+    }
     return res.status(500).json({
       success: false,
       message: 'Failed to get an AI answer for this invoice.',
+      detail: err.message,
     });
   }
 });
 
-// ═══════════════════════════════════════════════════════════════════════════
-// Private helpers (module-scoped, not exported)
-// ═══════════════════════════════════════════════════════════════════════════
+// ─── Private helpers (module-scoped, not exported) ────────────────────────
 
 /**
  * Mark an invoice as failed, persist it, and log the error.
@@ -508,5 +644,22 @@ async function _markFailed(invoice, reason) {
   }
   console.error(`❌  Invoice ${invoice._id} failed: ${reason}`);
 }
+
+// ─── Startup: seed the vector store from MongoDB embeddings ─────────────────
+// Runs once when the module is first required (i.e. on server start).
+// Only loads documents that already have an embedding stored — new ones are
+// indexed on-the-fly when uploaded.
+(async () => {
+  try {
+    // Explicitly select the embedding field (it's excluded by default)
+    const invoices = await Invoice.find(
+      { embedding: { $ne: null }, status: 'completed' },
+      { _id: 1, embedding: 1 }
+    ).lean();
+    vectorStore.seed(invoices);
+  } catch (err) {
+    console.warn('[vectorStore seed] Could not seed from MongoDB:', err.message);
+  }
+})();
 
 module.exports = router;

@@ -50,6 +50,7 @@ router.post('/', async (req, res) => {
     if (isRiskQuery) {
       console.log('🔍  Query contains risk keywords. Fetching medium/high risk invoices...');
       invoiceContext = await Invoice.find({
+        userId: req.userId,
         status: 'completed',
         risk_level: { $in: ['medium', 'high'] },
       })
@@ -59,6 +60,7 @@ router.post('/', async (req, res) => {
     } else {
       // 2. Fetch distinct vendor names to see if one is mentioned in the query
       const distinctVendors = await Invoice.distinct('vendor_name', {
+        userId: req.userId,
         status: 'completed',
         vendor_name: { $ne: null },
       });
@@ -70,6 +72,7 @@ router.post('/', async (req, res) => {
       if (matchedVendor) {
         console.log(`🔍  Query mentions vendor "${matchedVendor}". Fetching vendor's invoices...`);
         invoiceContext = await Invoice.find({
+          userId: req.userId,
           status: 'completed',
           vendor_name: matchedVendor,
         })
@@ -79,7 +82,7 @@ router.post('/', async (req, res) => {
       } else {
         // 3. Fallback: retrieve the 10 most recent invoices to serve as general context
         console.log('🔍  Fallback: Fetching 10 most recent completed invoices...');
-        invoiceContext = await Invoice.find({ status: 'completed' })
+        invoiceContext = await Invoice.find({ userId: req.userId, status: 'completed' })
           .sort({ createdAt: -1 })
           .limit(10)
           .lean();
@@ -99,6 +102,14 @@ router.post('/', async (req, res) => {
     });
   } catch (err) {
     console.error('[POST /api/chat] error:', err);
+    const isUnavailable = err.message?.includes('unavailable') || err.message?.includes('attempts') || err.message?.includes('Timeout') || err.message?.includes('rate limit') || err.message?.includes('429') || err.message?.includes('503');
+    if (isUnavailable) {
+      return res.status(503).json({
+        success: false,
+        error: "AI service temporarily unavailable, please try again",
+        detail: err.message,
+      });
+    }
     return res.status(500).json({
       success: false,
       message: 'Failed to process chat query.',
