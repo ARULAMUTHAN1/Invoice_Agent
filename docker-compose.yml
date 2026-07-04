@@ -25,7 +25,7 @@ services:
     container_name: invoice_mongo_db
     restart: unless-stopped
     ports:
-      - "27017:27017"
+      - "0.0.0.0:27017:27017"
     volumes:
       - mongo_data:/data/db
     networks:
@@ -39,7 +39,7 @@ services:
     container_name: invoice_app
     restart: unless-stopped
     ports:
-      - "3000:3000"
+      - "0.0.0.0:3000:3000"
     environment:
       - PORT=3000
       - NODE_ENV=production
